@@ -51,7 +51,7 @@ public final class FileStorageUtil {
         return storedName;
     }
 
-    public static void streamFile(File file, String downloadName, HttpServletResponse response) throws IOException {
+    public static void streamFile(File file, String downloadName, HttpServletResponse response, boolean inline) throws IOException {
         String safeDownloadName = InputSanitizer.safeFileName(downloadName);
         if (safeDownloadName == null) {
             safeDownloadName = "download.bin";
@@ -60,9 +60,42 @@ public final class FileStorageUtil {
         String encodedName = URLEncoder.encode(safeDownloadName, StandardCharsets.UTF_8.name())
                 .replace("+", "%20");
 
-        response.setContentType("application/octet-stream");
+        String contentType = "application/octet-stream";
+        if (inline) {
+            try {
+                contentType = java.nio.file.Files.probeContentType(file.toPath());
+            } catch (IOException e) {
+                contentType = null;
+            }
+            // Files.probeContentType often returns null on Windows — use extension fallback
+            if (contentType == null) {
+                String name = file.getName().toLowerCase();
+                if (name.endsWith(".pdf")) contentType = "application/pdf";
+                else if (name.endsWith(".png")) contentType = "image/png";
+                else if (name.endsWith(".jpg") || name.endsWith(".jpeg")) contentType = "image/jpeg";
+                else if (name.endsWith(".gif")) contentType = "image/gif";
+                else if (name.endsWith(".svg")) contentType = "image/svg+xml";
+                else if (name.endsWith(".webp")) contentType = "image/webp";
+                else if (name.endsWith(".txt")) contentType = "text/plain";
+                else if (name.endsWith(".html") || name.endsWith(".htm")) contentType = "text/html";
+                else if (name.endsWith(".css")) contentType = "text/css";
+                else if (name.endsWith(".js")) contentType = "application/javascript";
+                else if (name.endsWith(".json")) contentType = "application/json";
+                else if (name.endsWith(".xml")) contentType = "application/xml";
+                else if (name.endsWith(".mp4")) contentType = "video/mp4";
+                else if (name.endsWith(".mp3")) contentType = "audio/mpeg";
+                else if (name.endsWith(".docx")) contentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+                else if (name.endsWith(".pptx")) contentType = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+                else if (name.endsWith(".xlsx")) contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+                else if (name.endsWith(".zip")) contentType = "application/zip";
+                else contentType = "application/octet-stream";
+            }
+        }
+
+        response.setContentType(contentType);
         response.setHeader("X-Content-Type-Options", "nosniff");
-        response.setHeader("Content-Disposition", "attachment; filename=\"" + safeDownloadName + "\"; filename*=UTF-8''" + encodedName);
+        String disposition = inline ? "inline" : "attachment";
+        response.setHeader("Content-Disposition", disposition + "; filename=\"" + safeDownloadName + "\"; filename*=UTF-8''" + encodedName);
         response.setContentLengthLong(file.length());
 
         try (InputStream in = new FileInputStream(file);
